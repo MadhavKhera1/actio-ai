@@ -1,8 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const generateAIResponse = require("../services/gemini.service");
 
 const Chat = require("../models/chat.model");
 const FAQ = require("../models/faq.model");
+
 
 router.post("/chat", async(req,res)=>{
     try{
@@ -19,7 +21,7 @@ router.post("/chat", async(req,res)=>{
             response=faq.answer;
         }
         else{
-            response= "I am not sure about that, please contact support.";
+            response= await generateAIResponse(message);
         }
 
         // Escalation Detection
