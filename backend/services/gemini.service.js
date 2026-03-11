@@ -9,9 +9,14 @@ async function generateAIResponse(userMessage){
 
     //this is a custom prompt so that AI behaves like support assistant
     const prompt = `
-    Your are a helpful customer support bot.
-    Understand and Answer the user's question clearly and briefly.
-    If you do not know the answer, say you are not sure and suggest contacting support.
+    You are a helpful customer support assistant.
+
+    Rules:
+    - Give short and clear answers.
+    - Maximum 3 sentences.
+    - Use simple language.
+    - Avoid long paragraphs.
+    - If unsure, say "Please contact support.
     User Question:
     ${userMessage}
     `;

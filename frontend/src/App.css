@@ -1,0 +1,103 @@
+body {
+  margin: 0;
+  font-family: "Inter", "Segoe UI", sans-serif;
+  background: #0f172a;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+/* Main container */
+.container {
+  width: 100%;
+  max-width: 650px;
+  height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Title */
+.title {
+  text-align: center;
+  color: white;
+  margin-bottom: 12px;
+}
+
+/* Chat box */
+.chat-box {
+  flex: 1;
+  background: #1e293b;
+  border-radius: 12px;
+  padding: 15px;
+  overflow-y: auto;
+  box-shadow: 0px 4px 25px rgba(0,0,0,0.4);
+}
+
+/* Message bubbles */
+.message {
+  padding: 10px 14px;
+  border-radius: 14px;
+  margin: 8px 0;
+  max-width: 75%;
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+/* User bubble */
+.user {
+  background: #2563eb;
+  color: white;
+  margin-left: auto;
+}
+
+/* Bot bubble */
+.bot {
+  background: #334155;
+  color: white;
+}
+
+/* Input area */
+.input-area {
+  display: flex;
+  margin-top: 10px;
+  gap: 10px;
+}
+
+.input-area input {
+  flex: 1;
+  padding: 12px;
+  border-radius: 8px;
+  border: none;
+  outline: none;
+}
+
+.input-area button {
+  background: #2563eb;
+  color: white;
+  border: none;
+  padding: 12px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.input-area button:hover {
+  background: #1d4ed8;
+}
+
+/* Mobile responsive */
+@media (max-width: 600px) {
+
+  body {
+    padding: 10px;
+  }
+
+  .container {
+    height: 95vh;
+  }
+
+  .message {
+    max-width: 90%;
+  }
+}
