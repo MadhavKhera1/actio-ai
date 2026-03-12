@@ -101,3 +101,28 @@ body {
     max-width: 90%;
   }
 }
+.app-layout {
+  display: flex;
+  height: 100vh;
+}
+
+.sidebar {
+  width: 250px;
+  background: #020617;
+  color: white;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.chat-item {
+  background: #1e293b;
+  padding: 8px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.chat-item:hover {
+  background: #334155;
+}

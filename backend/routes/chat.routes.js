@@ -60,4 +60,16 @@ router.post("/chat", async(req,res)=>{
     }
 });
 
+router.get("/chats",async(req,res)=>{
+    try{
+        const chats = await Chat.find()
+            .sort({ createdAt: -1 })
+            .limit(20);
+        res.json(chats);
+    } catch(error){
+        console.error(error);
+        res.status(500).json({error: "Failed to fetch chats"});
+    }
+});
+
 module.exports= router;

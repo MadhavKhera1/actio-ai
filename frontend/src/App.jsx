@@ -1,6 +1,7 @@
 import "./App.css";
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import ChatSidebar from "./components/ChatSidebar";
 
 function App() {
 
@@ -65,6 +66,11 @@ function App() {
   };
 
   return (
+
+  <div className="app-layout">
+
+    <ChatSidebar />
+
     <div className="container">
 
       <h2 className="title">AI Support Bot</h2>
@@ -81,9 +87,7 @@ function App() {
         ))}
 
         {loading && (
-          <div className="message bot">
-            Bot is typing...
-          </div>
+          <div className="message bot">Bot is typing...</div>
         )}
 
         <div ref={chatEndRef}></div>
@@ -99,13 +103,13 @@ function App() {
           placeholder="Ask a question..."
         />
 
-        <button onClick={sendMessage}>
-          Send
-        </button>
+        <button onClick={sendMessage}>Send</button>
 
       </div>
 
     </div>
+
+  </div>
   );
 }
 
