@@ -8,13 +8,35 @@ function App() {
   const [message, setMessage] = useState("");
   const [chat, setChat] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [conversationId, setConversationId] = useState(null);
+  const [conversations, setConversations] = useState([]);
 
   const chatEndRef = useRef(null);
 
-  // Auto scroll when new message arrives
+  // fetch conversations for sidebar
+  const fetchConversations = async () => {
+    try {
+      const res = await axios.get("http://localhost:5000/api/conversations");
+      setConversations(res.data);
+    } catch (error) {
+      console.error("Failed to fetch conversations", error);
+    }
+  };
+
+  // load conversations when app starts
+  useEffect(() => {
+    fetchConversations();
+  }, []);
+
+  // auto scroll
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat]);
+
+  const startNewConversation = () => {
+    setConversationId(null);
+    setChat([]);
+  };
 
   const sendMessage = async () => {
 
@@ -24,6 +46,7 @@ function App() {
 
     setMessage("");
 
+    // show user message immediately
     setChat(prev => [
       ...prev,
       { sender: "user", text: userText }
@@ -34,11 +57,30 @@ function App() {
     try {
 
       const res = await axios.post("http://localhost:5000/api/chat", {
-        message: userText
+        message: userText,
+        conversationId: conversationId
       });
 
       const botReply = res.data.reply;
 
+      // if first message → create conversation
+      if (!conversationId) {
+
+        const newConversationId = res.data.conversationId;
+
+        setConversationId(newConversationId);
+
+        // add new conversation instantly to sidebar
+        setConversations(prev => [
+          {
+            _id: newConversationId,
+            title: userText.slice(0, 40)
+          },
+          ...prev
+        ]);
+      }
+
+      // add bot response
       setChat(prev => [
         ...prev,
         { sender: "bot", text: botReply }
@@ -58,7 +100,6 @@ function App() {
     setLoading(false);
   };
 
-  // Send message when pressing Enter
   const handleKeyPress = (e) => {
     if (e.key === "Enter") {
       sendMessage();
@@ -67,49 +108,55 @@ function App() {
 
   return (
 
-  <div className="app-layout">
+    <div className="app-layout">
 
-    <ChatSidebar />
+      <ChatSidebar conversations={conversations} />
 
-    <div className="container">
+      <div className="container">
 
-      <h2 className="title">AI Support Bot</h2>
+        <h2 className="title">AI Support Bot</h2>
 
-      <div className="chat-box">
+        <button className="new-chat-btn" onClick={startNewConversation}>
+          + New Chat
+        </button>
 
-        {chat.map((msg, index) => (
-          <div
-            key={index}
-            className={`message ${msg.sender === "user" ? "user" : "bot"}`}
-          >
-            {msg.text}
-          </div>
-        ))}
+        <div className="chat-box">
 
-        {loading && (
-          <div className="message bot">Bot is typing...</div>
-        )}
+          {chat.map((msg, index) => (
+            <div
+              key={index}
+              className={`message ${msg.sender === "user" ? "user" : "bot"}`}
+            >
+              {msg.text}
+            </div>
+          ))}
 
-        <div ref={chatEndRef}></div>
+          {loading && (
+            <div className="message bot">Bot is typing...</div>
+          )}
 
-      </div>
+          <div ref={chatEndRef}></div>
 
-      <div className="input-area">
+        </div>
 
-        <input
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={handleKeyPress}
-          placeholder="Ask a question..."
-        />
+        <div className="input-area">
 
-        <button onClick={sendMessage}>Send</button>
+          <input
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={handleKeyPress}
+            placeholder="Ask a question..."
+          />
+
+          <button onClick={sendMessage}>
+            Send
+          </button>
+
+        </div>
 
       </div>
 
     </div>
-
-  </div>
   );
 }
 

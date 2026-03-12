@@ -1,19 +1,47 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
 
 const generateAIResponse = require("../services/gemini.service");
 
-const Chat = require("../models/chat.model");
+const Conversation = require("../models/conversation.model");
+const Message = require("../models/message.model");
 const FAQ = require("../models/faq.model");
 
 
+// POST /api/chat
 router.post("/chat", async (req, res) => {
 
     try {
 
-        const { message } = req.body;
+        const { message, conversationId } = req.body;
 
-        // check FAQ first
+        let conversation;
+
+        // create new conversation if none exists
+        if (!conversationId) {
+
+            conversation = new Conversation({
+                title: message.slice(0, 40)
+            });
+
+            await conversation.save();
+
+        } else {
+
+            conversation = await Conversation.findById(conversationId);
+
+        }
+
+        // save user message
+        const userMessage = new Message({
+            conversationId: conversation._id,
+            role: "user",
+            content: message
+        });
+
+        await userMessage.save();
+
+        // check FAQ
         const faq = await FAQ.findOne({
             question: { $regex: message, $options: "i" }
         });
@@ -26,16 +54,19 @@ router.post("/chat", async (req, res) => {
 
         } else {
 
-            // get last 5 chat messages
-            const previousChats = await Chat.find()
-                .sort({ createdAt: -1 })
-                .limit(5);
+            // fetch previous messages for context
+            const previousMessages = await Message.find({
+                conversationId: conversation._id
+            })
+                .sort({ createdAt: 1 })
+                .limit(10);
 
             let conversationHistory = "";
 
-            previousChats.reverse().forEach(chat => {
-                conversationHistory += `User: ${chat.userMessage}\n`;
-                conversationHistory += `Bot: ${chat.botResponse}\n`;
+            previousMessages.forEach(msg => {
+
+                conversationHistory += `${msg.role}: ${msg.content}\n`;
+
             });
 
             const fullPrompt = `
@@ -47,6 +78,7 @@ ${message}
 `;
 
             response = await generateAIResponse(fullPrompt);
+
         }
 
         // Escalation Detection
@@ -66,19 +98,21 @@ ${message}
                 break;
 
             }
+
         }
 
-        // save chat history
-        const chat = new Chat({
-            userMessage: message,
-            botResponse: response,
-            needsHumanSupport
+        // save bot response
+        const botMessage = new Message({
+            conversationId: conversation._id,
+            role: "bot",
+            content: response
         });
 
-        await chat.save();
+        await botMessage.save();
 
         res.json({
             reply: response,
+            conversationId: conversation._id,
             needsHumanSupport
         });
 
@@ -92,21 +126,42 @@ ${message}
 });
 
 
-// get recent chats
-router.get("/chats", async (req, res) => {
+// GET all conversations for sidebar
+router.get("/conversations", async (req, res) => {
 
     try {
 
-        const chats = await Chat.find()
+        const conversations = await Conversation.find()
             .sort({ createdAt: -1 })
             .limit(20);
 
-        res.json(chats);
+        res.json(conversations);
 
     } catch (error) {
 
         console.error(error);
-        res.status(500).json({ error: "Failed to fetch chats" });
+        res.status(500).json({ error: "Failed to fetch conversations" });
+
+    }
+
+});
+
+
+// GET messages of a specific conversation
+router.get("/messages/:conversationId", async (req, res) => {
+
+    try {
+
+        const messages = await Message.find({
+            conversationId: req.params.conversationId
+        }).sort({ createdAt: 1 });
+
+        res.json(messages);
+
+    } catch (error) {
+
+        console.error(error);
+        res.status(500).json({ error: "Failed to fetch messages" });
 
     }
 
