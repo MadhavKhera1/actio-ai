@@ -106,11 +106,39 @@ function App() {
     }
   };
 
+  const loadConversation = async (id) => {
+
+  try {
+
+    const res = await axios.get(
+      `http://localhost:5000/api/messages/${id}`
+    );
+
+    const messages = res.data.map(msg => ({
+      sender: msg.role,
+      text: msg.content
+    }));
+
+    setConversationId(id);
+    setChat(messages);
+
+  } catch (error) {
+
+    console.error("Failed to load conversation", error);
+
+  }
+
+  };
+
   return (
 
     <div className="app-layout">
 
-      <ChatSidebar conversations={conversations} />
+      <ChatSidebar
+        conversations={conversations}
+        loadConversation={loadConversation}
+        setConversations={setConversations}
+      />
 
       <div className="container">
 

@@ -147,23 +147,47 @@ router.get("/conversations", async (req, res) => {
 });
 
 
-// GET messages of a specific conversation
+// get messages of a specific conversation
 router.get("/messages/:conversationId", async (req, res) => {
 
-    try {
+  try {
 
-        const messages = await Message.find({
-            conversationId: req.params.conversationId
-        }).sort({ createdAt: 1 });
+    const messages = await Message.find({
+      conversationId: req.params.conversationId
+    }).sort({ createdAt: 1 });
 
-        res.json(messages);
+    res.json(messages);
 
-    } catch (error) {
+  } catch (error) {
 
-        console.error(error);
-        res.status(500).json({ error: "Failed to fetch messages" });
+    console.error(error);
+    res.status(500).json({ error: "Failed to fetch messages" });
 
-    }
+  }
+
+});
+
+// delete a conversation
+router.delete("/conversation/:id", async (req, res) => {
+
+  try {
+
+    const conversationId = req.params.id;
+
+    // delete all messages of the conversation
+    await Message.deleteMany({ conversationId: conversationId });
+
+    // delete the conversation
+    await Conversation.findByIdAndDelete(conversationId);
+
+    res.json({ message: "Conversation deleted successfully" });
+
+  } catch (error) {
+
+    console.error(error);
+    res.status(500).json({ error: "Failed to delete conversation" });
+
+  }
 
 });
 

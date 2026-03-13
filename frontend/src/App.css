@@ -140,3 +140,50 @@ body {
 .new-chat-btn:hover {
   background: #1d4ed8;
 }
+
+.chat-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  margin-bottom: 6px;
+  border-radius: 8px;
+  background: #1e293b;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.chat-item:hover {
+  background: #334155;
+}
+
+.chat-title {
+  flex: 1;
+}
+
+/* desktop: hide delete icon */
+.delete-btn {
+  background: transparent;
+  border: none;
+  color: #ff4d4f;
+  cursor: pointer;
+  font-size: 14px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+/* show icon when hovering (desktop) */
+.chat-item:hover .delete-btn {
+  opacity: 1;
+}
+
+/* mobile devices: always show delete icon */
+@media (max-width: 768px) {
+  .delete-btn {
+    opacity: 1;
+  }
+}
+
+.delete-btn:hover {
+  color: #ff0000;
+}
