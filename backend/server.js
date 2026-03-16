@@ -5,6 +5,8 @@ require('dotenv').config();
 const  connectDB = require('./config/db');
 const chatRoutes = require("./routes/chat.routes");
 const faqRoutes = require('./routes/faq.routes');
+const authRoutes = require('./routes/auth.routes');
+
 
 const app = express();
 
@@ -18,6 +20,7 @@ app.use(express.json());
 
 app.use("/api",chatRoutes);
 app.use("/api",faqRoutes);
+app.use("/api/auth",authRoutes);
 
 
 //test routes
