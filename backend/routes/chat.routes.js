@@ -141,16 +141,16 @@ router.get("/conversations", authMiddleware,async (req, res) => {
 
     try {
 
-        const conversations = await Conversation.find()
-            .sort({ createdAt: -1 })
-            .limit(20);
+        const conversations = await Conversation.find({
+            userId: req.user.id
+        }).sort({createdAt: -1});
 
         res.json(conversations);
 
     } catch (error) {
 
         console.error(error);
-        res.status(500).json({ error: "Failed to fetch conversations" });
+        res.status(500).json({ error: "Server Error" });
 
     }
 
@@ -162,16 +162,36 @@ router.get("/messages/:conversationId", authMiddleware, async (req, res) => {
 
   try {
 
+    const conversationId = req.params.conversationId; // ✅ correct
+
+    const conversation = await Conversation.findById(conversationId);
+
+    if (!conversation) {
+      return res.status(404).json({
+        message: "Conversation not found"
+      });
+    }
+
+    // 🔐 security check
+    if (conversation.userId.toString() !== req.user.id) {
+      return res.status(403).json({
+        message: "Access denied"
+      });
+    }
+
     const messages = await Message.find({
-      conversationId: req.params.conversationId
+      conversationId: conversationId
     }).sort({ createdAt: 1 });
 
     res.json(messages);
 
   } catch (error) {
 
-    console.error(error);
-    res.status(500).json({ error: "Failed to fetch messages" });
+    console.error("GET MESSAGES ERROR:", error);
+
+    res.status(500).json({
+      error: "Server error"
+    });
 
   }
 
@@ -184,18 +204,40 @@ router.delete("/conversation/:id", authMiddleware, async (req, res) => {
 
     const conversationId = req.params.id;
 
-    // delete all messages of the conversation
-    await Message.deleteMany({ conversationId: conversationId });
+    // find conversation
+    const conversation = await Conversation.findById(conversationId);
 
-    // delete the conversation
+    // check if exists
+    if (!conversation) {
+      return res.status(404).json({
+        message: "Conversation not found"
+      });
+    }
+
+    // check ownership
+    if (conversation.userId.toString() !== req.user.id) {
+      return res.status(403).json({
+        message: "Access denied"
+      });
+    }
+
+    // delete all messages
+    await Message.deleteMany({ conversationId });
+
+    // delete conversation
     await Conversation.findByIdAndDelete(conversationId);
 
-    res.json({ message: "Conversation deleted successfully" });
+    res.json({
+      message: "Conversation deleted successfully"
+    });
 
   } catch (error) {
 
-    console.error(error);
-    res.status(500).json({ error: "Failed to delete conversation" });
+    console.error("DELETE CONVERSATION ERROR:", error);
+
+    res.status(500).json({
+      error: "Failed to delete conversation"
+    });
 
   }
 
