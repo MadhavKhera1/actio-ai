@@ -152,6 +152,15 @@ if (token) {
         />
       </div>
 
+      <button
+        onClick={() => {
+          localStorage.removeItem("token");
+          window.location.reload();
+        }}
+      >
+        Logout
+      </button>
+
       <div className="container">
         <div className="chat-area">
 
