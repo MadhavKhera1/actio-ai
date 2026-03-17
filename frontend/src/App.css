@@ -455,3 +455,32 @@ body{
   text-align: center;
   width: 100%;
 }
+
+/* Sidebar layout fix */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+/* Top section scrollable */
+.sidebar-top {
+  overflow-y: auto;
+}
+
+/* Logout button */
+.logout-btn {
+  margin-top: 10px;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  background: #ef4444;
+  color: white;
+  cursor: pointer;
+  font-weight: 600;
+  transition: 0.2s;
+}
+
+.logout-btn:hover {
+  background: #dc2626;
+}

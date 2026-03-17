@@ -36,8 +36,8 @@ function ChatSidebar({ conversations, loadConversation, setConversations,convers
 };
 
   return (
-
     <div className="sidebar">
+    <div className="sidebar-top">
 
       <h3>Previous Chats</h3>
 
@@ -68,6 +68,17 @@ function ChatSidebar({ conversations, loadConversation, setConversations,convers
 
       ))}
 
+    </div>
+
+    <button
+      className="logout-btn"
+      onClick={() => {
+        localStorage.removeItem("token");
+        window.location.reload();
+      }}
+    >
+      Logout
+    </button>
     </div>
 
   );
