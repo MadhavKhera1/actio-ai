@@ -1,9 +1,11 @@
 import { useState } from "react";
 import axios from "axios";
+import Signup from "./Signup";
 
 function Login({ setIsLoggedIn }){
     const [email,setEmail]= useState("");
     const [password,setPassword]= useState("");
+    const [showSignup, setShowSignup] = useState(false);
 
     const handleLogin = async()=>{
         try{
@@ -25,6 +27,11 @@ function Login({ setIsLoggedIn }){
 
         }
     };
+
+    if (showSignup) {
+        return <Signup setIsLoggedIn={setIsLoggedIn} />;
+    
+    }
     return(
         <div className= "auth-container">
 
@@ -49,6 +56,16 @@ function Login({ setIsLoggedIn }){
                 Login
 
             </button>
+
+            <p>
+                Don't have an account?{" "}
+                <span
+                    style={{ color: "blue", cursor: "pointer" }}
+                    onClick={() => setShowSignup(true)}
+                >
+                    Signup
+                </span>
+            </p>
         </div>
     );
 }
