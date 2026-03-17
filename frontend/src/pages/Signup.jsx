@@ -1,7 +1,7 @@
 import { useState } from "react";
 import axios from "axios";
 
-function Signup({ setIsLoggedIn }) {
+function Signup({ setIsLoggedIn, goToLogin }) {
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -17,7 +17,6 @@ function Signup({ setIsLoggedIn }) {
         password
       });
 
-      // after signup → auto login
       const res = await axios.post(
         "http://localhost:5000/api/auth/login",
         { email, password }
@@ -29,7 +28,7 @@ function Signup({ setIsLoggedIn }) {
 
     } catch (error) {
 
-      console.error("Signup failed", error);
+      console.error(error);
       alert("Signup failed");
 
     }
@@ -37,40 +36,47 @@ function Signup({ setIsLoggedIn }) {
   };
 
   return (
+    <div className="auth-wrapper">
+      <h1 className="auth-heading">AI Support Bot</h1>
+      <div className="auth-card">
 
-    <div className="auth-container">
+        <h2 className="auth-title">Create Account</h2>
 
-      <h2>Signup</h2>
+        <input
+          type="text"
+          placeholder="Enter name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
 
-      <input
-        type="text"
-        placeholder="Enter name"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-      />
+        <input
+          type="email"
+          placeholder="Enter email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
 
-      <input
-        type="email"
-        placeholder="Enter email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-      />
+        <input
+          type="password"
+          placeholder="Enter password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
 
-      <input
-        type="password"
-        placeholder="Enter password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
+        <button onClick={handleSignup}>
+          Signup
+        </button>
 
-      <button onClick={handleSignup}>
-        Signup
-      </button>
+        <p className="auth-switch">
+          Already have an account?{" "}
+          <span onClick={goToLogin}>
+            Login
+          </span>
+        </p>
 
+      </div>
     </div>
-
   );
-
 }
 
 export default Signup;
