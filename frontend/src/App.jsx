@@ -5,6 +5,7 @@ import ChatSidebar from "./components/ChatSidebar";
 import { FaBars } from "react-icons/fa";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import jsPDF from 'jspdf';
 
 import Login from "./pages/Login";
 
@@ -22,6 +23,19 @@ function App() {
   const [user, setUser] = useState(null);
   const [copiedMessage, setCopiedMessage] = useState(null);
   const [copiedCode, setCopiedCode] = useState(null);
+  const [showExportOptions, setShowExportOptions] = useState(false);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showExportOptions && !event.target.closest('.export-dropdown')) {
+        setShowExportOptions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showExportOptions]);
 
   const token = localStorage.getItem("token");
 
@@ -191,6 +205,68 @@ function App() {
     }
   };
 
+  const exportAsText = () => {
+    try {
+      let content = '';
+      chat.forEach((msg, index) => {
+        const sender = msg.sender === 'user' ? 'You' : 'AI Support Bot';
+        content += `${sender}:\n${msg.text}\n\n`;
+      });
+      
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `chat-${new Date().toISOString().slice(0, 10)}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setShowExportOptions(false);
+    } catch (error) {
+      console.error('Failed to export text:', error);
+    }
+  };
+
+  const exportAsPDF = () => {
+    try {
+      const doc = new jsPDF();
+      let yPosition = 20;
+      const lineHeight = 7;
+      const pageWidth = doc.internal.pageSize.width - 40;
+      
+      doc.setFontSize(12);
+      
+      chat.forEach((msg, index) => {
+        const sender = msg.sender === 'user' ? 'You:' : 'AI Support Bot:';
+        const lines = doc.splitTextToSize(msg.text, pageWidth);
+        
+        // Add sender
+        doc.setFont(undefined, 'bold');
+        doc.text(sender, 20, yPosition);
+        yPosition += lineHeight + 2;
+        
+        // Add message content
+        doc.setFont(undefined, 'normal');
+        lines.forEach(line => {
+          if (yPosition > 270) {
+            doc.addPage();
+            yPosition = 20;
+          }
+          doc.text(line, 20, yPosition);
+          yPosition += lineHeight;
+        });
+        
+        yPosition += 5;
+      });
+      
+      doc.save(`chat-${new Date().toISOString().slice(0, 10)}.pdf`);
+      setShowExportOptions(false);
+    } catch (error) {
+      console.error('Failed to export PDF:', error);
+    }
+  };
+
   const regenerateResponse = async () => {
     if (chat.length < 2 || loading) return;
     
@@ -256,13 +332,29 @@ function App() {
             <div className="top-bar-spacer"></div>
             <h2 className="title">AI Support Bot</h2>
             <div className="top-bar-actions">
-              <button className="export-btn" title="Export Chat (Coming Soon)">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="7 10 12 15 17 10"/>
-                  <line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-              </button>
+              <div className="export-dropdown">
+                <button 
+                  className="export-btn" 
+                  onClick={() => setShowExportOptions(!showExportOptions)}
+                  title="Export Chat"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                </button>
+                {showExportOptions && (
+                  <div className="export-options">
+                    <button className="export-option" onClick={exportAsText}>
+                      📄 Export as Text
+                    </button>
+                    <button className="export-option" onClick={exportAsPDF}>
+                      📄 Export as PDF
+                    </button>
+                  </div>
+                )}
+              </div>
               <button className="new-chat-btn" onClick={startNewConversation}>
                 + New Chat
               </button>
