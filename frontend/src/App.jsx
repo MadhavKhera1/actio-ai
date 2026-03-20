@@ -161,6 +161,8 @@ function App() {
     const t = raw.replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ");
 
     const hasChatWord = /(chat|chats|conversation|conversations|message|messages)/.test(t);
+    const hasSettingsWord =
+      /(settings|setting|preferences|profile page|account settings)/.test(t);
     const hasRenameWord =
       /(rename|change title|set title|update title|edit title|retitle)/.test(t);
     const hasExportWord = /(export|download|save|store)/.test(t);
@@ -175,6 +177,11 @@ function App() {
     const hasList = /(list|show|previous|recent|what are my chats|my chats)/.test(t);
 
     const hasRegenerate = /(regenerate|try again|refresh response|redo|re-do|another answer|new answer)/.test(t);
+    const wantsSettings =
+      hasSettingsWord ||
+      /(open settings|go to settings|open profile|edit profile|change profile|update profile|change password|update password)/.test(
+        t
+      );
 
     // Most destructive/specific first
     if (hasRegenerate) return { type: "REGENERATE_LAST_RESPONSE" };
@@ -185,6 +192,8 @@ function App() {
     if (hasChatWord && hasDelete && hasThis) return { type: "DELETE_CURRENT_CHAT" };
     if (hasChatWord && hasDelete && hasLast) return { type: "DELETE_LAST_CHAT" };
     if (hasChatWord && hasDelete) return { type: "DELETE_CHAT" };
+
+    if (wantsSettings) return { type: "OPEN_SETTINGS" };
 
     // Rename chat
     if (hasChatWord && hasRenameWord && hasThis) return { type: "RENAME_CURRENT_CHAT" };
@@ -281,6 +290,12 @@ function App() {
 
     setMessage("");
     const intent = detectIntent(textToSend);
+
+    if (intent.type === "OPEN_SETTINGS") {
+      showToast("Opening settings…", 1200);
+      navigate("/settings");
+      return;
+    }
 
     // Regenerate intent should NOT add the "regenerate" command as a user message.
     // We want to regenerate the previous answer using the last actual user question.
