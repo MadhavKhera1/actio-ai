@@ -92,6 +92,16 @@ body{
   pointer-events: none;
 }
 
+.agent-toast.agent{
+  background: rgba(37, 99, 235, 0.15);
+  border: 1px solid rgba(37, 99, 235, 0.35);
+}
+
+.agent-toast.ai{
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
 /* Keep Settings feedback visible while scrolling */
 .settings-container .message{
   position: sticky;

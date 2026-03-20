@@ -158,9 +158,22 @@ function App() {
 
   const detectIntent = (text) => {
     const raw = text.toLowerCase().trim();
-    const t = raw.replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ");
+    const normalizedRaw = raw
+      .replace(/[“”]/g, '"')
+      .replace(/[‘’]/g, "'");
+    const t = normalizedRaw.replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ");
 
     const hasChatWord = /(chat|chats|conversation|conversations|message|messages)/.test(t);
+    // Support: delete "something" chat  / remove 'something' conversation
+    // Also supports smart quotes (from copy/paste).
+    const quotedDeleteMatch = normalizedRaw.match(
+      /(delete|remove|clear)\s+["'](.+?)["'](?:\s+(chat|conversation|conversations))?/i
+    );
+
+    // Support: delete chat named as "Chat Title"
+    const namedAsDeleteMatch = normalizedRaw.match(
+      /(delete|remove|clear)\s+(chat|conversation|conversations|message|messages)?\s*(named\s+as|named|titled|called)\s+["'](.+?)["']/i
+    );
     const hasSettingsWord =
       /(settings|setting|preferences|profile page|account settings)/.test(t);
     const hasRenameWord =
@@ -183,15 +196,35 @@ function App() {
         t
       );
 
+    const wantsNewChat =
+      /(open new chat|new chat|start new chat|create new chat|begin new chat|start a new conversation|new conversation)/.test(
+        t
+      );
+
     // Most destructive/specific first
     if (hasRegenerate) return { type: "REGENERATE_LAST_RESPONSE" };
+    if (wantsNewChat) return { type: "OPEN_NEW_CHAT" };
     if (hasChatWord && hasExportWord && wantsPdf) return { type: "EXPORT_PDF" };
     if (hasChatWord && hasExportWord && wantsText) return { type: "EXPORT_TEXT" };
     if (hasChatWord && hasExportWord) return { type: "EXPORT_TEXT" };
     if (hasChatWord && hasDelete && hasAll) return { type: "CLEAR_ALL_CHATS" };
     if (hasChatWord && hasDelete && hasThis) return { type: "DELETE_CURRENT_CHAT" };
     if (hasChatWord && hasDelete && hasLast) return { type: "DELETE_LAST_CHAT" };
-    if (hasChatWord && hasDelete) return { type: "DELETE_CHAT" };
+    // Don't use generic delete if we have a more specific quoted/named delete match.
+    if (hasChatWord && hasDelete && !quotedDeleteMatch && !namedAsDeleteMatch) {
+      return { type: "DELETE_CHAT" };
+    }
+
+    // "delete "something" chat"
+    if (hasChatWord && hasDelete && quotedDeleteMatch) {
+      const targetTitle = quotedDeleteMatch[2]?.trim();
+      if (targetTitle) return { type: "DELETE_CHAT_BY_TITLE", targetTitle };
+    }
+
+    if (namedAsDeleteMatch) {
+      const targetTitle = namedAsDeleteMatch[4]?.trim();
+      if (targetTitle) return { type: "DELETE_CHAT_BY_TITLE_NAMED", targetTitle };
+    }
 
     if (wantsSettings) return { type: "OPEN_SETTINGS" };
 
@@ -274,12 +307,27 @@ function App() {
   };
 
   const [toastText, setToastText] = useState(null);
+  const [toastKind, setToastKind] = useState("agent"); // "agent" | "ai"
   const toastTimeoutRef = useRef(null);
 
-  const showToast = (text, ms = 1800) => {
+  const showToast = (text, ms = 1800, kind = "agent") => {
+    setToastKind(kind);
     setToastText(text);
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
     toastTimeoutRef.current = setTimeout(() => setToastText(null), ms);
+  };
+
+  // Pending multi-step agent actions (e.g., "delete chat named as X" -> ask -> next user "delete" confirms)
+  const [pendingAgentAction, setPendingAgentAction] = useState(null);
+
+  const isConfirmMessage = (text) => {
+    const t = text.toLowerCase().trim();
+    return /^(delete|confirm|yes|yep|ok|okay|sure|proceed|go ahead|do it)\b/.test(t);
+  };
+
+  const isCancelMessage = (text) => {
+    const t = text.toLowerCase().trim();
+    return /^(cancel|cancle|no|stop|abort)\b/.test(t);
   };
 
   const sendMessage = async (customMessage) => {
@@ -289,19 +337,61 @@ function App() {
     if (!textToSend.trim()) return;
 
     setMessage("");
+
+    // Multi-step agent action confirmation:
+    // e.g. `delete chat named as "X"` -> bot asks -> user replies `delete`
+    if (pendingAgentAction) {
+      if (isCancelMessage(textToSend)) {
+        setPendingAgentAction(null);
+        showToast("Action cancelled", 1400, "agent");
+        return;
+      }
+
+      if (isConfirmMessage(textToSend)) {
+        const { conversationId } = pendingAgentAction;
+        try {
+          showToast("Running action…", 1600, "agent");
+          await axios.delete(`/api/conversation/${conversationId}`);
+          await fetchConversations();
+
+          if (conversationId === pendingAgentAction.conversationId) {
+            setConversationId(null);
+            setChat([]);
+          }
+          showToast("✅ Chat deleted", 1600, "agent");
+        } catch (error) {
+          console.error("Pending delete error:", error);
+          showToast("Failed to delete chat", 2000, "agent");
+        }
+
+        setPendingAgentAction(null);
+        return;
+      }
+
+      showToast("Waiting for confirmation…", 1800, "agent");
+      appendBot('Reply "delete" to confirm, or "cancel" to abort.');
+      return;
+    }
     const intent = detectIntent(textToSend);
 
     if (intent.type === "OPEN_SETTINGS") {
-      showToast("Opening settings…", 1200);
+      showToast("Opening settings…", 1200, "agent");
       navigate("/settings");
+      return;
+    }
+
+    if (intent.type === "OPEN_NEW_CHAT") {
+      showToast("Opening new chat…", 1200, "agent");
+      startNewConversation();
+      showToast("✅ New chat ready", 1800, "agent");
       return;
     }
 
     // Regenerate intent should NOT add the "regenerate" command as a user message.
     // We want to regenerate the previous answer using the last actual user question.
     if (intent.type === "REGENERATE_LAST_RESPONSE") {
-      showToast("Detecting intent…", 1200);
-      showToast("Executing action…", 1600);
+      showToast("Analyzing your request…", 1200, "agent");
+      showToast("Running action…", 1600, "agent");
       try {
         await regenerateResponse();
       } catch (error) {
@@ -312,44 +402,173 @@ function App() {
     }
 
     if (intent.type === "EXPORT_PDF") {
-      showToast("Detecting intent…", 1200);
-      showToast("Executing action…", 1600);
+      showToast("Analyzing your request…", 1200, "agent");
+      showToast("Running action…", 1600, "agent");
       if (!chat.length) {
-        showToast("No chat to export.", 1600);
+        showToast("No chat to export.", 1600, "agent");
         return;
       }
       try {
         exportAsPDF();
-        showToast("✅ Exported as PDF", 1800);
+        showToast("✅ Exported as PDF", 1800, "agent");
       } catch (error) {
         console.error("Export PDF error:", error);
-        showToast("Failed to export PDF", 2000);
+        showToast("Failed to export PDF", 2000, "agent");
       }
       return;
     }
 
     if (intent.type === "EXPORT_TEXT") {
-      showToast("Detecting intent…", 1200);
-      showToast("Executing action…", 1600);
+      showToast("Analyzing your request…", 1200, "agent");
+      showToast("Running action…", 1600, "agent");
       if (!chat.length) {
-        showToast("No chat to export.", 1600);
+        showToast("No chat to export.", 1600, "agent");
         return;
       }
       try {
         exportAsText();
-        showToast("✅ Exported as Text", 1800);
+        showToast("✅ Exported as Text", 1800, "agent");
       } catch (error) {
         console.error("Export Text error:", error);
-        showToast("Failed to export text", 2000);
+        showToast("Failed to export text", 2000, "agent");
       }
+      return;
+    }
+
+    if (intent.type === "DELETE_CHAT_BY_TITLE_NAMED") {
+      const targetTitle = intent.targetTitle || "";
+      const targetLower = targetTitle.toLowerCase().trim();
+
+      if (!targetLower) {
+        appendBot('Tell me the chat title you want to delete (example: delete chat named as "My chat").');
+        return;
+      }
+
+      try {
+        const res = await axios.get("/api/conversations");
+        const convs = res.data || [];
+
+        const targetWords = targetLower.split(/\s+/).filter((w) => w.length > 2);
+        const scoreConv = (title) => {
+          const tl = (title || "").toLowerCase();
+          let score = 0;
+          if (!tl) return 0;
+          if (tl.includes(targetLower)) score += 5;
+          for (const w of targetWords) {
+            if (tl.includes(w)) score += 1;
+          }
+          return score;
+        };
+
+        const ranked = convs
+          .map((c) => ({ c, score: scoreConv(c?.title) }))
+          .sort((a, b) => b.score - a.score);
+
+        const matched = ranked[0]?.score ? ranked[0].c : null;
+
+        if (!matched) {
+          appendBot(`Couldn't find a chat matching "${targetTitle}".`);
+          showToast("Chat not found", 1800, "agent");
+          return;
+        }
+
+        // Ask for confirmation in a multi-step way:
+        // Next user message "delete" will finalize.
+        setPendingAgentAction({
+          conversationId: matched._id,
+          title: matched.title,
+        });
+
+        appendBot(
+          `Found chat "${matched.title}". Do you want to delete it? Reply "delete" to confirm, or "cancel" to abort.`
+        );
+        showToast("Confirmation required…", 1800, "agent");
+      } catch (error) {
+        console.error("Delete by title named error:", error);
+        appendBot("Something went wrong while preparing the delete.");
+        showToast("Failed to prepare delete", 2000, "agent");
+      }
+
+      return;
+    }
+
+    if (intent.type === "DELETE_CHAT_BY_TITLE") {
+      const targetTitle = intent.targetTitle || "";
+      const targetLower = targetTitle.toLowerCase().trim();
+
+      if (!targetLower) {
+        appendBot("Tell me the chat title you want to delete (example: delete \"My chat\" chat).");
+        return;
+      }
+
+      try {
+        const res = await axios.get("/api/conversations");
+        const convs = res.data || [];
+
+        const targetWords = targetLower.split(/\s+/).filter((w) => w.length > 2);
+
+        const scoreConv = (title) => {
+          const tl = (title || "").toLowerCase();
+          let score = 0;
+          if (!tl) return 0;
+          if (tl.includes(targetLower)) score += 5;
+          for (const w of targetWords) {
+            if (tl.includes(w)) score += 1;
+          }
+          return score;
+        };
+
+        const ranked = convs
+          .map((c) => ({ c, score: scoreConv(c?.title) }))
+          .sort((a, b) => b.score - a.score);
+
+        const matched = ranked[0]?.score ? ranked[0].c : null;
+
+        if (!matched) {
+          appendBot(`Couldn't find a chat matching "${targetTitle}".`);
+          showToast("Chat not found", 1800, "agent");
+          return;
+        }
+
+        const ok = window.confirm(`Delete the chat "${matched.title}"?`);
+        if (!ok) {
+          showToast("Action cancelled", 1400, "agent");
+          return;
+        }
+
+        await axios.delete(`/api/conversation/${matched._id}`);
+        await fetchConversations();
+
+        if (conversationId === matched._id) {
+          setConversationId(null);
+          setChat([]);
+        }
+
+        showToast("✅ Chat deleted", 1600, "agent");
+      } catch (error) {
+        console.error("Delete by title error:", error);
+        appendBot("Something went wrong while deleting that chat.");
+        showToast("Failed to delete chat", 2000, "agent");
+      }
+
       return;
     }
 
     setChat((prev) => [...prev, { sender: "user", text: textToSend }]);
     setLoading(true);
 
-    showToast("Detecting intent…", 1200);
-    showToast("Executing action…", 1600);
+    // Agent action mode
+    const isAgentAction = intent.type !== "AI_CHAT";
+    showToast(
+      isAgentAction ? "Analyzing intent…" : "Thinking…",
+      1200,
+      isAgentAction ? "agent" : "ai"
+    );
+    showToast(
+      isAgentAction ? "Running action…" : "Generating response…",
+      1600,
+      isAgentAction ? "agent" : "ai"
+    );
 
     try {
       if (intent.type === "LIST_CHATS") {
@@ -365,13 +584,13 @@ function App() {
       } else if (intent.type === "CLEAR_ALL_CHATS") {
         const ok = window.confirm("Are you sure you want to clear ALL chats?");
         if (!ok) {
-          showToast("Action cancelled", 1400);
+          showToast("Action cancelled", 1400, "agent");
         } else {
           await axios.delete("/api/conversations/clear-all");
           setConversations([]);
           setConversationId(null);
           setChat([]);
-          showToast("✅ All chats cleared", 1600);
+          showToast("✅ All chats cleared", 1600, "agent");
         }
       } else if (intent.type === "DELETE_LAST_CHAT") {
         const res = await axios.get("/api/conversations");
@@ -385,7 +604,7 @@ function App() {
             "Are you sure you want to delete the last (most recent) chat?"
           );
           if (!ok) {
-            showToast("Action cancelled", 1400);
+            showToast("Action cancelled", 1400, "agent");
           } else {
             await axios.delete(`/api/conversation/${last._id}`);
             await fetchConversations();
@@ -396,7 +615,7 @@ function App() {
             } else {
               appendBot("✅ Deleted the last chat.");
             }
-            showToast("✅ Chat deleted", 1600);
+            showToast("✅ Chat deleted", 1600, "agent");
           }
         }
       } else if (intent.type === "DELETE_CURRENT_CHAT") {
@@ -412,25 +631,25 @@ function App() {
               "No active chat found. Delete the last (most recent) chat instead?"
             );
             if (!ok) {
-              showToast("Action cancelled", 1400);
+              showToast("Action cancelled", 1400, "agent");
             } else {
               await axios.delete(`/api/conversation/${last._id}`);
               await fetchConversations();
               setConversationId(null);
               setChat([]);
-              showToast("✅ Chat deleted", 1600);
+              showToast("✅ Chat deleted", 1600, "agent");
             }
           }
         } else {
           const ok = window.confirm("Are you sure you want to delete this chat?");
           if (!ok) {
-            showToast("Action cancelled", 1400);
+            showToast("Action cancelled", 1400, "agent");
           } else {
             await axios.delete(`/api/conversation/${conversationId}`);
             await fetchConversations();
             setConversationId(null);
             setChat([]);
-            showToast("✅ Chat deleted", 1600);
+            showToast("✅ Chat deleted", 1600, "agent");
           }
         }
       } else if (intent.type === "DELETE_CHAT") {
@@ -438,13 +657,13 @@ function App() {
         if (conversationId) {
           const ok = window.confirm("Are you sure you want to delete this chat?");
           if (!ok) {
-            showToast("Action cancelled", 1400);
+            showToast("Action cancelled", 1400, "agent");
           } else {
             await axios.delete(`/api/conversation/${conversationId}`);
             await fetchConversations();
             setConversationId(null);
             setChat([]);
-            showToast("✅ Chat deleted", 1600);
+            showToast("✅ Chat deleted", 1600, "agent");
           }
         } else {
           // No active chat: delete most recent
@@ -458,13 +677,13 @@ function App() {
               "Are you sure you want to delete the last (most recent) chat?"
             );
             if (!ok) {
-              showToast("Action cancelled", 1400);
+              showToast("Action cancelled", 1400, "agent");
             } else {
               await axios.delete(`/api/conversation/${last._id}`);
               await fetchConversations();
               setConversationId(null);
               setChat([]);
-              showToast("✅ Chat deleted", 1600);
+              showToast("✅ Chat deleted", 1600, "agent");
             }
           }
         }
@@ -497,7 +716,7 @@ function App() {
           : proposedTitle;
 
         if (!newTitle) {
-          showToast("Rename cancelled", 1400);
+          showToast("Rename cancelled", 1400, "agent");
         } else {
           await axios.put(`/api/conversation/${targetId}/title`, {
             title: newTitle,
@@ -508,7 +727,7 @@ function App() {
           );
 
           appendBot(`✅ Renamed chat to "${newTitle}"`);
-          showToast("✅ Chat renamed", 1800);
+          showToast("✅ Chat renamed", 1800, "agent");
         }
       } else {
         // Normal AI chat
@@ -740,7 +959,7 @@ function App() {
         ) : (
         <>
           {toastText && (
-            <div className="agent-toast" role="status" aria-live="polite">
+            <div className={`agent-toast ${toastKind}`} role="status" aria-live="polite">
               {toastText}
             </div>
           )}
