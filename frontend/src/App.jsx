@@ -161,6 +161,8 @@ function App() {
     const t = raw.replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ");
 
     const hasChatWord = /(chat|chats|conversation|conversations|message|messages)/.test(t);
+    const hasRenameWord =
+      /(rename|change title|set title|update title|edit title|retitle)/.test(t);
     const hasExportWord = /(export|download|save|store)/.test(t);
     const wantsPdf = /\bpdf\b/.test(t) || /(as pdf|in pdf|pdf version)/.test(t);
     const wantsText = /\btxt\b/.test(t) || /\btext\b/.test(t) || /(plain|as text|txt version)/.test(t);
@@ -184,6 +186,10 @@ function App() {
     if (hasChatWord && hasDelete && hasLast) return { type: "DELETE_LAST_CHAT" };
     if (hasChatWord && hasDelete) return { type: "DELETE_CHAT" };
 
+    // Rename chat
+    if (hasChatWord && hasRenameWord && hasThis) return { type: "RENAME_CURRENT_CHAT" };
+    if (hasChatWord && hasRenameWord) return { type: "RENAME_LAST_CHAT" };
+
     if (hasChatWord && hasList) return { type: "LIST_CHATS" };
 
     return { type: "AI_CHAT" };
@@ -191,6 +197,71 @@ function App() {
 
   const appendBot = (text) => {
     setChat((prev) => [...prev, { sender: "bot", text }]);
+  };
+
+  // Used for "agentic" formatting requests like:
+  // "give bullet points", "short answer", "explain like I'm 5", "include code"
+  const getFormatInstruction = (text) => {
+    const t = text.toLowerCase();
+    const parts = [];
+
+    if (/(bullet points|bullets|list of|in bullets|point form)/.test(t)) {
+      parts.push("Use bullet points.");
+    }
+
+    if (/(step-by-step|step by step|steps)/.test(t)) {
+      parts.push("Provide step-by-step instructions.");
+    }
+
+    if (/(explain like (i'?m|i am) 5|eli5|like i'm 5|like i am 5)/.test(t)) {
+      parts.push("Explain like I'm 5 years old.");
+    }
+
+    if (/(include code|code snippet|snippet|provide code)/.test(t)) {
+      parts.push("Include code snippets when relevant.");
+    }
+
+    if (/(short answer|keep it short|brief|concisely|very short)/.test(t)) {
+      parts.push("Keep the answer short and concise.");
+    }
+
+    if (/(long explanation|in detail|detailed|elaborate|in depth)/.test(t)) {
+      parts.push("Provide a detailed explanation.");
+    }
+
+    if (/(examples?|for example|e\.g\.)/.test(t)) {
+      parts.push("Add one or two examples.");
+    }
+
+    return parts.length ? parts.join(" ") : "";
+  };
+
+  const extractRenameTitle = (text) => {
+    const clean = text.trim().replace(/\s+/g, " ");
+    const patterns = [
+      /rename\s+(this|current|active)?\s*(chat|conversation)?\s*(to|as)?\s*:?["']?(.+?)["']?\s*$/i,
+      /change\s+title\s*(to|as)?\s*:?["']?(.+?)["']?\s*$/i,
+      /set\s+title\s*(to|as)?\s*:?["']?(.+?)["']?\s*$/i,
+      /retitle\s*(to|as)?\s*:?["']?(.+?)["']?\s*$/i,
+    ];
+
+    for (const re of patterns) {
+      const m = clean.match(re);
+      if (m) {
+        // last capture group is the proposed title
+        const maybeTitle = m[m.length - 1];
+        if (maybeTitle && typeof maybeTitle === "string") {
+          const title = maybeTitle.trim().replace(/^["']|["']$/g, "");
+            const titleLower = title.toLowerCase();
+            // If the user didn't provide a title, the regex may capture generic words like "chat".
+            if (!title) return "";
+            if (titleLower === "chat" || titleLower === "conversation") return "";
+            return title.slice(0, 80);
+        }
+      }
+    }
+
+    return "";
   };
 
   const [toastText, setToastText] = useState(null);
@@ -382,10 +453,57 @@ function App() {
             }
           }
         }
+      } else if (
+        intent.type === "RENAME_CURRENT_CHAT" ||
+        intent.type === "RENAME_LAST_CHAT"
+      ) {
+        const proposedTitle = extractRenameTitle(textToSend);
+
+        let targetId = conversationId;
+        if (!targetId || intent.type === "RENAME_LAST_CHAT") {
+          const res = await axios.get("/api/conversations");
+          const convs = res.data || [];
+          if (!convs.length) {
+            appendBot("No chats available to rename.");
+            setLoading(false);
+            return;
+          }
+          targetId = convs[0]._id; // most recent
+        }
+
+        const proposedLower = proposedTitle ? proposedTitle.toLowerCase().trim() : "";
+        const shouldPrompt =
+          !proposedTitle ||
+          proposedLower === "chat" ||
+          proposedLower === "conversation";
+
+        const newTitle = shouldPrompt
+          ? window.prompt("Enter a new chat title:", "Untitled chat")?.trim()
+          : proposedTitle;
+
+        if (!newTitle) {
+          showToast("Rename cancelled", 1400);
+        } else {
+          await axios.put(`/api/conversation/${targetId}/title`, {
+            title: newTitle,
+          });
+
+          setConversations((prev) =>
+            prev.map((c) => (c._id === targetId ? { ...c, title: newTitle } : c))
+          );
+
+          appendBot(`✅ Renamed chat to "${newTitle}"`);
+          showToast("✅ Chat renamed", 1800);
+        }
       } else {
         // Normal AI chat
+        const formatInstruction = getFormatInstruction(textToSend);
+        const messageForAI = formatInstruction
+          ? `${textToSend}\n\nResponse format: ${formatInstruction}`
+          : textToSend;
+
         const res = await axios.post("/api/chat", {
-          message: textToSend,
+          message: messageForAI,
           conversationId,
         });
 
@@ -537,8 +655,13 @@ function App() {
     setLoading(true);
     
     try {
+      const formatInstruction = getFormatInstruction(lastUserMessage.text);
+      const messageForAI = formatInstruction
+        ? `${lastUserMessage.text}\n\nResponse format: ${formatInstruction}`
+        : lastUserMessage.text;
+
       const res = await axios.post("/api/chat", {
-        message: lastUserMessage.text,
+        message: messageForAI,
         conversationId
       });
       

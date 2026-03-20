@@ -243,6 +243,41 @@ router.delete("/conversation/:id", authMiddleware, async (req, res) => {
 
 });
 
+// rename a conversation title
+router.put("/conversation/:id/title", authMiddleware, async (req, res) => {
+  try {
+    const conversationId = req.params.id;
+    const { title } = req.body;
+
+    if (!title || typeof title !== "string" || !title.trim()) {
+      return res.status(400).json({ message: "Title is required" });
+    }
+
+    const normalizedTitle = title.trim().slice(0, 80);
+
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ message: "Conversation not found" });
+    }
+
+    // ownership check
+    if (conversation.userId.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    conversation.title = normalizedTitle;
+    await conversation.save();
+
+    res.json({
+      message: "Conversation title updated successfully",
+      conversation,
+    });
+  } catch (error) {
+    console.error("RENAME CONVERSATION ERROR:", error);
+    res.status(500).json({ error: "Failed to rename conversation" });
+  }
+});
+
 // clear all conversations for a user
 router.delete("/conversations/clear-all", authMiddleware, async (req, res) => {
   try {
