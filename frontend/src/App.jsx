@@ -42,6 +42,7 @@ function App() {
   const token = localStorage.getItem("token");
 
   const chatEndRef = useRef(null);
+  const chatInputRef = useRef(null);
 
   useEffect(() => {
     const onPop = () => setRoute(window.location.pathname || "/");
@@ -80,6 +81,42 @@ function App() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat]);
+
+  // GPT-like UX: typing anywhere focuses the chat input and appends characters.
+  useEffect(() => {
+    const onGlobalKeyDown = (e) => {
+      if (route === "/settings") return;
+
+      const target = e.target;
+      const tag = target?.tagName?.toLowerCase?.();
+      const isTypingField =
+        tag === "textarea" || tag === "input" || tag === "select";
+      const isInteractive =
+        isTypingField || tag === "button" || tag === "a" || target?.isContentEditable;
+
+      if (isInteractive) return;
+
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === "Escape" || e.key === "Tab") return;
+
+      // Ensure focus
+      if (chatInputRef.current) chatInputRef.current.focus();
+
+      if (e.key === "Backspace") {
+        e.preventDefault();
+        setMessage((prev) => prev.slice(0, -1));
+        return;
+      }
+
+      if (e.key.length === 1) {
+        e.preventDefault();
+        setMessage((prev) => prev + e.key);
+      }
+    };
+
+    document.addEventListener("keydown", onGlobalKeyDown);
+    return () => document.removeEventListener("keydown", onGlobalKeyDown);
+  }, [route]);
 
   useEffect(() => {
     if (!isLoggedIn || !token) return;
@@ -124,6 +161,9 @@ function App() {
     const t = raw.replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ");
 
     const hasChatWord = /(chat|chats|conversation|conversations|message|messages)/.test(t);
+    const hasExportWord = /(export|download|save|store)/.test(t);
+    const wantsPdf = /\bpdf\b/.test(t) || /(as pdf|in pdf|pdf version)/.test(t);
+    const wantsText = /\btxt\b/.test(t) || /\btext\b/.test(t) || /(plain|as text|txt version)/.test(t);
     const hasDelete = /(delete|remove|clear|erase|wipe|reset|purge|drop)/.test(t);
     const hasAll = /\b(all|everything|entire|whole|every)\b/.test(t);
 
@@ -136,6 +176,9 @@ function App() {
 
     // Most destructive/specific first
     if (hasRegenerate) return { type: "REGENERATE_LAST_RESPONSE" };
+    if (hasChatWord && hasExportWord && wantsPdf) return { type: "EXPORT_PDF" };
+    if (hasChatWord && hasExportWord && wantsText) return { type: "EXPORT_TEXT" };
+    if (hasChatWord && hasExportWord) return { type: "EXPORT_TEXT" };
     if (hasChatWord && hasDelete && hasAll) return { type: "CLEAR_ALL_CHATS" };
     if (hasChatWord && hasDelete && hasThis) return { type: "DELETE_CURRENT_CHAT" };
     if (hasChatWord && hasDelete && hasLast) return { type: "DELETE_LAST_CHAT" };
@@ -178,6 +221,40 @@ function App() {
       } catch (error) {
         console.error("Regenerate error:", error);
         appendBot("Something went wrong while regenerating. Please try again.");
+      }
+      return;
+    }
+
+    if (intent.type === "EXPORT_PDF") {
+      showToast("Detecting intent…", 1200);
+      showToast("Executing action…", 1600);
+      if (!chat.length) {
+        showToast("No chat to export.", 1600);
+        return;
+      }
+      try {
+        exportAsPDF();
+        showToast("✅ Exported as PDF", 1800);
+      } catch (error) {
+        console.error("Export PDF error:", error);
+        showToast("Failed to export PDF", 2000);
+      }
+      return;
+    }
+
+    if (intent.type === "EXPORT_TEXT") {
+      showToast("Detecting intent…", 1200);
+      showToast("Executing action…", 1600);
+      if (!chat.length) {
+        showToast("No chat to export.", 1600);
+        return;
+      }
+      try {
+        exportAsText();
+        showToast("✅ Exported as Text", 1800);
+      } catch (error) {
+        console.error("Export Text error:", error);
+        showToast("Failed to export text", 2000);
       }
       return;
     }
@@ -358,8 +435,12 @@ function App() {
 
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === "Enter") sendMessage();
+  const handleKeyDown = (e) => {
+    // Enter submits; Shift+Enter allows newline (if needed).
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
   };
 
   const copyMessage = async (text, index) => {
@@ -718,7 +799,8 @@ function App() {
             placeholder="Ask a question"
             className="chat-input"
             rows={1}
-            onKeyPress={handleKeyPress}
+            onKeyDown={handleKeyDown}
+            ref={chatInputRef}
           />
           <button onClick={() => sendMessage()} className="send-btn" disabled={loading}>
             {loading ? "Sending..." : "Send"}
