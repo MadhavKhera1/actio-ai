@@ -1,49 +1,30 @@
-const createTransporter = () => {
-    const {
-        SMTP_HOST,
-        SMTP_PORT,
-        SMTP_USER,
-        SMTP_PASS,
-        SMTP_SECURE
-    } = process.env;
+const { Resend } = require("resend");
 
-    if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) {
+const getResendClient = () => {
+    const { RESEND_API_KEY } = process.env;
+
+    if (!RESEND_API_KEY) {
         return null;
     }
 
-    let nodemailer;
-    try {
-        nodemailer = require("nodemailer");
-    } catch (error) {
-        throw new Error("Nodemailer is not installed. Run npm install in backend.");
-    }
-
-    return nodemailer.createTransport({
-        host: SMTP_HOST,
-        port: Number(SMTP_PORT),
-        secure: SMTP_SECURE === "true",
-        auth: {
-            user: SMTP_USER,
-            pass: SMTP_PASS
-        }
-    });
+    return new Resend(RESEND_API_KEY);
 };
 
 const sendPasswordResetEmail = async ({ to, resetLink, resetToken }) => {
-    const transporter = createTransporter();
+    const resend = getResendClient();
 
-    if (!transporter) {
+    if (!resend) {
         if (process.env.NODE_ENV !== "production") {
             console.log(`Password reset for ${to}: ${resetLink}`);
             return { delivered: false, fallback: true };
         }
 
-        throw new Error("SMTP is not configured");
+        throw new Error("Resend is not configured");
     }
 
-    const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+    const from = process.env.EMAIL_FROM || "onboarding@resend.dev";
 
-    await transporter.sendMail({
+    await resend.emails.send({
         from,
         to,
         subject: "Reset your Actio AI password",
