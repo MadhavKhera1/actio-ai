@@ -26,6 +26,33 @@ function App() {
   const [copiedCode, setCopiedCode] = useState(null);
   const [showExportOptions, setShowExportOptions] = useState(false);
   const [route, setRoute] = useState(() => window.location.pathname || "/");
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [helpRendered, setHelpRendered] = useState(false);
+  const helpCloseTimeoutRef = useRef(null);
+
+  const openHelp = () => {
+    if (helpRendered) {
+      setHelpOpen(true);
+      return;
+    }
+    setHelpRendered(true);
+    requestAnimationFrame(() => setHelpOpen(true));
+  };
+
+  const closeHelp = () => {
+    setHelpOpen(false);
+    if (helpCloseTimeoutRef.current) clearTimeout(helpCloseTimeoutRef.current);
+    helpCloseTimeoutRef.current = setTimeout(
+      () => setHelpRendered(false),
+      220
+    );
+  };
+
+  const tryHelpCommand = (cmd) => {
+    setMessage(cmd);
+    if (chatInputRef.current) chatInputRef.current.focus();
+    closeHelp();
+  };
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -43,6 +70,7 @@ function App() {
 
   const chatEndRef = useRef(null);
   const chatInputRef = useRef(null);
+  const chatBoxRef = useRef(null);
 
   useEffect(() => {
     const onPop = () => setRoute(window.location.pathname || "/");
@@ -79,13 +107,34 @@ function App() {
   
 
   useEffect(() => {
+    if (chat.length === 0) return;
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat]);
+
+  useEffect(() => {
+    if (route !== "/") return;
+    if (chat.length !== 0) return;
+    if (!chatBoxRef.current) return;
+    chatBoxRef.current.scrollTop = 0;
+  }, [chat.length, route, isLoggedIn]);
+
+  // Close help modal on Escape
+  useEffect(() => {
+    if (!helpOpen) return;
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") {
+        closeHelp();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [helpOpen]);
 
   // GPT-like UX: typing anywhere focuses the chat input and appends characters.
   useEffect(() => {
     const onGlobalKeyDown = (e) => {
       if (route === "/settings") return;
+      if (helpRendered) return;
 
       const target = e.target;
       const tag = target?.tagName?.toLowerCase?.();
@@ -116,16 +165,12 @@ function App() {
 
     document.addEventListener("keydown", onGlobalKeyDown);
     return () => document.removeEventListener("keydown", onGlobalKeyDown);
-  }, [route]);
+  }, [route, helpOpen, helpRendered]);
 
   useEffect(() => {
     if (!isLoggedIn || !token) return;
     Promise.resolve().then(fetchConversations);
   }, [token, isLoggedIn]);
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chat]);
 
   useEffect(() => {
 
@@ -819,7 +864,7 @@ function App() {
     try {
       let content = '';
       chat.forEach((msg) => {
-        const sender = msg.sender === 'user' ? 'You' : 'AI Support Bot';
+        const sender = msg.sender === 'user' ? 'You' : 'Actio AI';
         content += `${sender}:\n${msg.text}\n\n`;
       });
       
@@ -848,7 +893,7 @@ function App() {
       doc.setFontSize(12);
       
       chat.forEach((msg) => {
-        const sender = msg.sender === 'user' ? 'You:' : 'AI Support Bot:';
+        const sender = msg.sender === 'user' ? 'You:' : 'Actio AI:';
         const lines = doc.splitTextToSize(msg.text, pageWidth);
         
         // Add sender
@@ -965,7 +1010,10 @@ function App() {
           )}
         <div className="top-bar">
           <div className="top-bar-spacer"></div>
-          <h2 className="title">AI Support Bot</h2>
+          <h2 className="title">
+            <span className="brand-name">Actio AI</span>
+            <span className="brand-tagline">Act. Think. Execute.</span>
+          </h2>
           <div className="top-bar-actions">
             <div className="export-dropdown">
               <button 
@@ -996,12 +1044,45 @@ function App() {
           </div>
         </div>
 
-        <div className="chat-box">
+        <div
+          ref={chatBoxRef}
+          className={`chat-box ${chat.length === 0 ? "welcome-mode" : ""}`}
+        >
           {chat.length === 0 && (
             <div className="welcome-layout">
               <div className="welcome-left">
-                <h3>Start a conversation</h3>
-                <p>Try asking one of these questions:</p>
+                <div className="welcome-copy">
+                  <h3>Start a conversation</h3>
+                  <p>Try a quick prompt or use an action command.</p>
+                </div>
+
+                  <div className="agentic-welcome-tip">
+                    <div className="agentic-welcome-title">🧠 Tip: Agentic commands</div>
+                    <div className="agentic-welcome-text">
+                      Besides AI answers, you can run actions like delete, rename, export, and settings.
+                      Click <b>Help</b> for examples.
+                    </div>
+                    <div className="agentic-welcome-actions">
+                      <button
+                        type="button"
+                        onClick={() => tryHelpCommand("delete this chat")}
+                      >
+                        🗑️ delete this chat
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => tryHelpCommand('rename this chat to "AI basics"')}
+                      >
+                        ✏️ rename this chat
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => tryHelpCommand("export this chat as pdf")}
+                      >
+                        📄 export as PDF
+                      </button>
+                    </div>
+                  </div>
 
                 <div className="suggestions">
                   <button onClick={() => sendMessage("What is Machine Learning?")}>
@@ -1020,21 +1101,34 @@ function App() {
               </div>
 
               <div className="welcome-right">
-                <h3>AI Support Bot</h3>
+                <div className="welcome-hero welcome-hero-subtle">
+                  <div className="welcome-hero-badge">🧠 Agentic AI</div>
+                  <div className="welcome-hero-title">
+                    Fast answers + smart actions
+                  </div>
+                  <div className="welcome-hero-sub">
+                    Ask a question, manage chats, and export your work from the same screen.
+                  </div>
+                  <div className="welcome-hero-points">
+                    <span>Context aware</span>
+                    <span>Saved chats</span>
+                    <span>One-click export</span>
+                  </div>
+                </div>
 
                 <div className="feature">
                   ⚡ Instant Answers
-                  <p>Ask technical questions and get quick explanations.</p>
+                  <p>Technical explanations that are quick and easy to follow.</p>
                 </div>
 
                 <div className="feature">
                   📚 Learning Assistant
-                  <p>Understand AI, machine learning, and programming concepts.</p>
+                  <p>Concept clarity for AI, ML, and programming basics.</p>
                 </div>
 
                 <div className="feature">
                   💬 Smart Conversations
-                  <p>The bot remembers context during your chat.</p>
+                  <p>Context-aware replies so your chat stays coherent.</p>
                 </div>
               </div>
             </div>
@@ -1166,6 +1260,245 @@ function App() {
         </>
         )}
       </div>
+
+      <button
+        className="help-fab"
+        onClick={openHelp}
+        title="Help & Agent Commands"
+        type="button"
+      >
+        🧠 Help
+      </button>
+
+      {helpRendered && (
+        <div
+          className="help-overlay"
+          onClick={closeHelp}
+          role="presentation"
+        >
+          <div
+            className={`help-modal ${helpOpen ? "open" : ""}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Help & Agent Commands"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="help-header">
+              <div className="help-title">
+                🧠 Help & Agent Guide
+              </div>
+              <button
+                className="help-close"
+                onClick={closeHelp}
+                type="button"
+                aria-label="Close help"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="help-body">
+              <div className="help-intro">
+                <div className="help-intro-title">Actio AI (Agentic Mode)</div>
+                <div className="help-intro-text">
+                  Type normal questions, or type agentic commands (like delete/rename/export/settings) and the app will run actions for you.
+                </div>
+                <div className="help-intro-text">
+                  For best results, use the examples below and review what you typed before pressing <b>Send</b>.
+                </div>
+              </div>
+
+              <div className="help-card">
+                <h3>🚀 Quick Start</h3>
+                <div className="help-command-grid">
+                  <div className="help-command-item">
+                    <button
+                      className="help-chip"
+                      type="button"
+                      onClick={() => tryHelpCommand('delete this chat')}
+                    >
+                      🗑️ delete this chat
+                    </button>
+                    <div className="help-command-desc">Deletes your active chat</div>
+                  </div>
+
+                  <div className="help-command-item">
+                    <button
+                      className="help-chip"
+                      type="button"
+                      onClick={() =>
+                        tryHelpCommand('rename this chat to "AI basics"')
+                      }
+                    >
+                      ✏️ rename this chat
+                    </button>
+                    <div className="help-command-desc">Renames the current conversation</div>
+                  </div>
+
+                  <div className="help-command-item">
+                    <button
+                      className="help-chip"
+                      type="button"
+                      onClick={() => tryHelpCommand("export this chat as pdf")}
+                    >
+                      📄 export this chat
+                    </button>
+                    <div className="help-command-desc">Exports your chat as PDF</div>
+                  </div>
+
+                  <div className="help-command-item">
+                    <button
+                      className="help-chip"
+                      type="button"
+                      onClick={() => tryHelpCommand("open settings")}
+                    >
+                      ⚙️ open settings
+                    </button>
+                    <div className="help-command-desc">Takes you to Settings</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="help-card">
+                <h3>🗑️ Chat Actions</h3>
+                <div className="help-command-grid">
+                  <div className="help-command-item">
+                    <button
+                      className="help-chip"
+                      type="button"
+                      onClick={() => tryHelpCommand("clear all chats")}
+                    >
+                      🧹 clear all chats
+                    </button>
+                    <div className="help-command-desc">Deletes all conversations</div>
+                  </div>
+
+                  <div className="help-command-item">
+                    <button
+                      className="help-chip"
+                      type="button"
+                      onClick={() =>
+                        tryHelpCommand('delete "chatName" chat')
+                      }
+                    >
+                      🗑️ delete by title
+                    </button>
+                    <div className="help-command-desc">Deletes the chat matching the title</div>
+                  </div>
+
+                  <div className="help-command-item">
+                    <button
+                      className="help-chip"
+                      type="button"
+                      onClick={() =>
+                        tryHelpCommand('delete chat named as "chatName" then delete')
+                      }
+                    >
+                      🧾 delete named as
+                    </button>
+                    <div className="help-command-desc">Finds chat, then waits for confirmation</div>
+                  </div>
+
+                  <div className="help-command-item">
+                    <button
+                      className="help-chip"
+                      type="button"
+                      onClick={() =>
+                        tryHelpCommand('rename this chat to "New Title"')
+                      }
+                    >
+                      ✏️ rename this chat
+                    </button>
+                    <div className="help-command-desc">Updates the sidebar title</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="help-card">
+                <h3>⚙️ Navigation</h3>
+                <div className="help-command-grid">
+                  <div className="help-command-item">
+                    <button
+                      className="help-chip"
+                      type="button"
+                      onClick={() => tryHelpCommand("open settings")}
+                    >
+                      ⚙️ open settings
+                    </button>
+                    <div className="help-command-desc">Go to profile/security/data</div>
+                  </div>
+
+                  <div className="help-command-item">
+                    <button
+                      className="help-chip"
+                      type="button"
+                      onClick={() => tryHelpCommand("new chat")}
+                    >
+                      ➕ new chat
+                    </button>
+                    <div className="help-command-desc">Starts a fresh conversation</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="help-card">
+                <h3>🔁 AI Actions</h3>
+                <div className="help-command-grid">
+                  <div className="help-command-item">
+                    <button
+                      className="help-chip"
+                      type="button"
+                      onClick={() => tryHelpCommand("try again")}
+                    >
+                      🔁 try again
+                    </button>
+                    <div className="help-command-desc">Regenerates the last response</div>
+                  </div>
+
+                  <div className="help-command-item">
+                    <button
+                      className="help-chip"
+                      type="button"
+                      onClick={() => tryHelpCommand("regenerate")}
+                    >
+                      🧠 regenerate
+                    </button>
+                    <div className="help-command-desc">Same as “try again”</div>
+                  </div>
+
+                  <div className="help-command-item">
+                    <button
+                      className="help-chip"
+                      type="button"
+                      onClick={() => tryHelpCommand("export this chat as txt")}
+                    >
+                      📄 export as text
+                    </button>
+                    <div className="help-command-desc">Downloads chat as a TXT file</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="help-card">
+                <h3>🧠 How it works</h3>
+                <div className="help-bullets">
+                  <div>1) Detects intent</div>
+                  <div>2) Runs the matching action</div>
+                  <div>3) Or calls the AI normally</div>
+                </div>
+              </div>
+
+              <div className="help-card help-card-danger">
+                <h3>🗑️ Safety for destructive actions</h3>
+                <div className="help-bullets">
+                  <div>Clear/Delete actions ask for confirmation</div>
+                  <div>For title-based deletes, it may ask you to confirm in the next message</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

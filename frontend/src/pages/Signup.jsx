@@ -37,7 +37,10 @@ function Signup({ setIsLoggedIn, goToLogin }) {
 
   return (
     <div className="auth-wrapper">
-      <h1 className="auth-heading">AI Support Bot</h1>
+      <h1 className="auth-heading">
+        <span className="auth-brand-name">Actio AI</span>
+        <span className="auth-brand-tagline">Act. Think. Execute.</span>
+      </h1>
       <div className="auth-card">
 
         <h2 className="auth-title">Create Account</h2>
