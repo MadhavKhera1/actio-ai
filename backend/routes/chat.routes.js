@@ -13,10 +13,11 @@ const { retrieveRelevantChunks } = require("../services/document.service");
 
 const DOCUMENT_GROUNDING_THRESHOLD = 0.42;
 const DOCUMENT_STRONG_MATCH_THRESHOLD = 0.5;
-const DOCUMENT_CONCEPT_MATCH_THRESHOLD = 0.62;
 const MAX_GROUNDED_CHUNKS = 3;
 const MAX_GROUNDED_DOCUMENTS = 2;
 const DOCUMENT_SIMILARITY_WINDOW = 0.04;
+const TEMPORARY_MODEL_OVERLOAD_MESSAGE =
+    "Actio AI is temporarily under heavy demand right now. Please try again in a moment.";
 
 const CONCEPT_QUESTION_PATTERNS = [
     /^what is\b/i,
@@ -46,24 +47,40 @@ const DOCUMENT_TARGET_PATTERNS = [
     /\bmy\b/i
 ];
 
+const PROFILE_QUESTION_PATTERNS = [
+    /\beducation\b/i,
+    /\bexperience\b/i,
+    /\bskill\b/i,
+    /\bexposure\b/i,
+    /\bintern(ship)?\b/i,
+    /\bproject\b/i,
+    /\bachievement\b/i,
+    /\bcollege\b/i,
+    /\bdegree\b/i,
+    /\bcgpa\b/i
+];
+
 const isConceptQuestion = (text = "") =>
     CONCEPT_QUESTION_PATTERNS.some((pattern) => pattern.test(text.trim()));
 
 const isDocumentTargetedQuestion = (text = "") =>
     DOCUMENT_TARGET_PATTERNS.some((pattern) => pattern.test(text));
 
+const isProfileQuestion = (text = "") =>
+    PROFILE_QUESTION_PATTERNS.some((pattern) => pattern.test(text));
+
 const pickGroundedChunks = (scoredChunks = [], options = {}) => {
-    const { preferGeneralKnowledge = false } = options;
+    const {
+        preferGeneralKnowledge = false,
+        preferConversationScope = false
+    } = options;
     const topChunk = scoredChunks[0] || null;
 
     if (!topChunk) {
         return [];
     }
 
-    if (
-        preferGeneralKnowledge &&
-        topChunk.similarity < DOCUMENT_CONCEPT_MATCH_THRESHOLD
-    ) {
+    if (preferGeneralKnowledge) {
         return [];
     }
 
@@ -109,12 +126,24 @@ const pickGroundedChunks = (scoredChunks = [], options = {}) => {
         strongestDocuments.map((document) => document.documentKey)
     );
 
-    return scoredChunks
+    const filteredChunks = scoredChunks
         .filter(
             (chunk) =>
                 chunk.similarity >= DOCUMENT_GROUNDING_THRESHOLD &&
                 allowedDocumentKeys.has(String(chunk.documentId))
-        )
+        );
+
+    if (preferConversationScope) {
+        const conversationChunks = filteredChunks.filter(
+            (chunk) => chunk.scope === "conversation"
+        );
+
+        if (conversationChunks.length) {
+            return conversationChunks.slice(0, MAX_GROUNDED_CHUNKS);
+        }
+    }
+
+    return filteredChunks
         .slice(0, MAX_GROUNDED_CHUNKS);
 };
 
@@ -197,20 +226,24 @@ router.post("/chat",authMiddleware, async (req, res) => {
 
             });
 
-            const relevantChunks = await retrieveRelevantChunks({
-                userId: req.user.id,
-                query: message,
-                conversationId: conversation._id,
-                limit: 4
-            });
+            const preferGeneralKnowledge =
+                isConceptQuestion(message) && !isDocumentTargetedQuestion(message);
+            const preferConversationScope = isProfileQuestion(message);
+            const relevantChunks = preferGeneralKnowledge
+                ? []
+                : await retrieveRelevantChunks({
+                    userId: req.user.id,
+                    query: message,
+                    conversationId: conversation._id,
+                    limit: 3
+                });
 
             const scoredChunks = relevantChunks.filter(
                 (chunk) => Number.isFinite(chunk.similarity)
             );
-            const preferGeneralKnowledge =
-                isConceptQuestion(message) && !isDocumentTargetedQuestion(message);
             const groundedChunks = pickGroundedChunks(scoredChunks, {
-                preferGeneralKnowledge
+                preferGeneralKnowledge,
+                preferConversationScope
             });
 
             if (groundedChunks.length) {
@@ -249,7 +282,12 @@ ${message}
 
             if (typeof response !== "string" || !response.trim()) {
                 response = "I could not generate a response right now. Please try again.";
-                groundingSource = "general";
+                groundingSource = "none";
+                sources = [];
+            }
+
+            if (response === TEMPORARY_MODEL_OVERLOAD_MESSAGE) {
+                groundingSource = "none";
                 sources = [];
             }
 
